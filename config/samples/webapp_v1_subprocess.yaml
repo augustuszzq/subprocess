@@ -1,0 +1,17 @@
+apiVersion: webapp.my.domain/v1
+kind: Subprocess
+metadata:
+  labels:
+    app.kubernetes.io/name: subprocess
+    app.kubernetes.io/instance: subprocess-sample
+    app.kubernetes.io/part-of: subprocess
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: subprocess
+  name: subprocess-sample
+spec:
+  # TODO(user): Add fields here
+  commands:
+    - "command1"
+    - "command2"
+    - "command3"
+  foo: bar

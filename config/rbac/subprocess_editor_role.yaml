@@ -1,0 +1,31 @@
+# permissions for end users to edit subprocesses.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: subprocess-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: subprocess
+    app.kubernetes.io/part-of: subprocess
+    app.kubernetes.io/managed-by: kustomize
+  name: subprocess-editor-role
+rules:
+- apiGroups:
+  - webapp.my.domain
+  resources:
+  - subprocesses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - webapp.my.domain
+  resources:
+  - subprocesses/status
+  verbs:
+  - get
