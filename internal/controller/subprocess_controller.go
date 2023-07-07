@@ -30,6 +30,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // SubprocessReconciler reconciles a Subprocess object
@@ -61,48 +62,51 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		fmt.Printf("Failed to get subprocess in request: %s", err)
 	}
 	fmt.Printf("Subprocess content: %v\n", sp)
+	if sp.DeletionTimestamp != nil {
 
-	deploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-deployment",
-			Namespace: "default",
-		},
-
-		Spec: appsv1.DeploymentSpec{
-			Replicas: int32Ptr(2), // Modify this to specify the number of replicas
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": "my-app",
-				},
+	} else {
+		deploy := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-deployment",
+				Namespace: "default",
 			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
+
+			Spec: appsv1.DeploymentSpec{
+				Replicas: int32Ptr(2), // Modify this to specify the number of replicas
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
 						"app": "my-app",
 					},
 				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:            "my-app",
-							Image:           "goproject:test",
-							ImagePullPolicy: "Never",
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "supervisord-config",
-									MountPath: "/etc/supervisor/conf.d",
-									ReadOnly:  true,
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							"app": "my-app",
+						},
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Name:            "my-app",
+								Image:           "goproject:test",
+								ImagePullPolicy: "Never",
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "supervisord-config",
+										MountPath: "/etc/supervisor/conf.d",
+										ReadOnly:  true,
+									},
 								},
 							},
 						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "supervisord-config",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "supervisord-config",
+						Volumes: []corev1.Volume{
+							{
+								Name: "supervisord-config",
+								VolumeSource: corev1.VolumeSource{
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "supervisord-config",
+										},
 									},
 								},
 							},
@@ -110,18 +114,21 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					},
 				},
 			},
-		},
+		}
+		fn := func() error {
+			return nil
+		}
+		// Create Deployment
+		if _, err := controllerutil.CreateOrUpdate(context.Background(), r.Client, deploy, fn); err != nil {
+			//result, err := deploymentsClient.Create(context.TODO(), deploy, metav1.CreateOptions{})
+
+			panic(err)
+		}
+		fmt.Printf("Created deployment %s.\n", deploy.GetObjectMeta().GetName())
+
+		return ctrl.Result{}, nil
 	}
 
-	// Create Deployment
-	if err := r.Client.Create(context.Background(), deploy); err != nil {
-		//result, err := deploymentsClient.Create(context.TODO(), deploy, metav1.CreateOptions{})
-
-		panic(err)
-	}
-	fmt.Printf("Created deployment %s.\n", deploy.GetObjectMeta().GetName())
-
-	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
