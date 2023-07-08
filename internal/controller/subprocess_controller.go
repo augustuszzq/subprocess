@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -56,19 +57,87 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
+	deleted := false
 	var sp = &webappv1.Subprocess{}
 	err := r.Client.Get(ctx, req.NamespacedName, sp)
+
 	if err != nil {
+		deleted = true
 		fmt.Printf("Failed to get subprocess in request: %s", err)
 	}
 	fmt.Printf("Subprocess content: %v\n", sp)
-	if sp.DeletionTimestamp != nil {
+	if deleted {
+		fmt.Printf("Subprocess is being deleted\n")
+		labelSelector := labels.Set{
+			"crd": req.Name,
+		}.AsSelector()
+		listOpts := []client.ListOption{
+			// Namespace: default, Modify this according to your needs
+			client.InNamespace("default"),
+			client.MatchingLabelsSelector{Selector: labelSelector},
+		}
+		deployments := &appsv1.DeploymentList{}
+		if err := r.Client.List(context.Background(), deployments, listOpts...); err != nil {
+			panic(err.Error())
+		}
+		fmt.Printf("Found %d deployments\n", len(deployments.Items))
+		if len(deployments.Items) != 0 {
+			if err := r.Client.Delete(context.Background(), &deployments.Items[0]); err != nil {
+				//result, err := deploymentsClient.Create(context.TODO(), deploy, metav1.CreateOptions{})
+
+				panic(err)
+			}
+			fmt.Printf("Deployment deleted successfully!\n")
+		}
+		configMaps := &corev1.ConfigMapList{}
+		if err := r.Client.List(context.Background(), configMaps, listOpts...); err != nil {
+			panic(err.Error())
+		}
+		fmt.Printf("Found %d configmaps\n", len(configMaps.Items))
+		if len(configMaps.Items) != 0 {
+			if err := r.Client.Delete(context.Background(), &configMaps.Items[0]); err != nil {
+				//result, err := deploymentsClient.Create(context.TODO(), deploy, metav1.CreateOptions{})
+				panic(err)
+			}
+			fmt.Printf("ConfigMap deleted successfully!\n")
+		}
 
 	} else {
+		configMap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-configmap",
+				Namespace: "default",
+				Labels: map[string]string{
+					"crd": sp.Name,
+				},
+			},
+			Data: map[string]string{
+				"supervisord.conf": `
+				[supervisorctl]
+				
+				[supervisord]
+				nodaemon=true
+				logfile=/var/log/supervisord.log
+				
+				[program:jupyter_notebook]
+				command=jupyter-notebook --allow-root
+				`,
+			},
+		}
+		if err := r.Client.Create(ctx, configMap); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		fmt.Println("ConfigMap created successfully!")
+
+		// Create a new Deployment
 		deploy := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-deployment",
 				Namespace: "default",
+				Labels: map[string]string{
+					"crd": sp.Name,
+				},
 			},
 
 			Spec: appsv1.DeploymentSpec{
@@ -126,9 +195,8 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		fmt.Printf("Created deployment %s.\n", deploy.GetObjectMeta().GetName())
 
-		return ctrl.Result{}, nil
 	}
-
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

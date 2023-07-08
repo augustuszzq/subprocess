@@ -29,7 +29,9 @@ type SubprocessSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of Subprocess. Edit subprocess_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Commands []string `json:"commands,omitempty"`
+	Replica  int32    `json:"replica,omitempty"`
+	Foo      string   `json:"foo,omitempty"`
 }
 
 // SubprocessStatus defines the observed state of Subprocess

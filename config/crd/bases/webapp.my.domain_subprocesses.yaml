@@ -34,10 +34,17 @@ spec:
           spec:
             description: SubprocessSpec defines the desired state of Subprocess
             properties:
-              foo:
+              commands:
                 description: Foo is an example field of Subprocess. Edit subprocess_types.go
                   to remove/update
+                items:
+                  type: string
+                type: array
+              foo:
                 type: string
+              replica:
+                format: int32
+                type: integer
             type: object
           status:
             description: SubprocessStatus defines the observed state of Subprocess
