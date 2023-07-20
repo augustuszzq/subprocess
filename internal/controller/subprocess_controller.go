@@ -57,16 +57,17 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
+	myFinalizerName := "batch.tutorial.kubebuilder.io/finalizer"
 	deleted := false
 	var sp = &webappv1.Subprocess{}
 	err := r.Client.Get(ctx, req.NamespacedName, sp)
 
 	if err != nil {
 		deleted = true
-		fmt.Printf("Failed to get subprocess in request: %s", err)
+		fmt.Printf("Failed to get subprocess %s in request: %s", req.NamespacedName, err)
 	}
 	fmt.Printf("Subprocess content: %v\n", sp)
-	if deleted {
+	if deleted || !sp.ObjectMeta.DeletionTimestamp.IsZero() {
 		fmt.Printf("Subprocess is being deleted\n")
 		labelSelector := labels.Set{
 			"crd": req.Name,
@@ -87,7 +88,7 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 				panic(err)
 			}
-			fmt.Printf("Deployment deleted successfully!\n")
+			fmt.Printf("Deployment %s deleted successfully!\n", deployments.Items[0].Name)
 		}
 		configMaps := &corev1.ConfigMapList{}
 		if err := r.Client.List(context.Background(), configMaps, listOpts...); err != nil {
@@ -99,10 +100,27 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				//result, err := deploymentsClient.Create(context.TODO(), deploy, metav1.CreateOptions{})
 				panic(err)
 			}
-			fmt.Printf("ConfigMap deleted successfully!\n")
+			fmt.Printf("ConfigMap %s deleted successfully!\n", configMaps.Items[0].Name)
 		}
 
+		if controllerutil.ContainsFinalizer(sp, myFinalizerName) {
+			// remove our finalizer from the list and update it.
+			controllerutil.RemoveFinalizer(sp, myFinalizerName)
+			if err := r.Update(ctx, sp); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 	} else {
+		conf := `
+[supervisorctl]
+[supervisord]
+nodaemon=true
+logfile=/var/log/supervisord.log
+`
+		for i := 0; i < len(sp.Spec.Commands); i++ {
+			conf += fmt.Sprintf("[program: command_%d]\n%s\n", i, sp.Spec.Commands[i])
+		}
+		fmt.Printf("ConfigMap content: %s\n", conf)
 		configMap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-configmap",
@@ -112,16 +130,7 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				},
 			},
 			Data: map[string]string{
-				"supervisord.conf": `
-				[supervisorctl]
-				
-				[supervisord]
-				nodaemon=true
-				logfile=/var/log/supervisord.log
-				
-				[program:jupyter_notebook]
-				command=jupyter-notebook --allow-root
-				`,
+				"supervisord.conf": conf,
 			},
 		}
 		if err := r.Client.Create(ctx, configMap); err != nil {
@@ -161,7 +170,7 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 								ImagePullPolicy: "Never",
 								VolumeMounts: []corev1.VolumeMount{
 									{
-										Name:      "supervisord-config",
+										Name:      "my-configmap",
 										MountPath: "/etc/supervisor/conf.d",
 										ReadOnly:  true,
 									},
@@ -170,11 +179,11 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 						},
 						Volumes: []corev1.Volume{
 							{
-								Name: "supervisord-config",
+								Name: "my-configmap",
 								VolumeSource: corev1.VolumeSource{
 									ConfigMap: &corev1.ConfigMapVolumeSource{
 										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "supervisord-config",
+											Name: "my-configmap",
 										},
 									},
 								},
@@ -195,6 +204,12 @@ func (r *SubprocessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		fmt.Printf("Created deployment %s.\n", deploy.GetObjectMeta().GetName())
 
+		// if !controllerutil.ContainsFinalizer(deploy, myFinalizerName) {
+		// 	controllerutil.AddFinalizer(deploy, myFinalizerName)
+		// 	if err := r.Update(ctx, deploy); err != nil {
+		// 		return ctrl.Result{}, err
+		// 	}
+		// }
 	}
 	return ctrl.Result{}, nil
 }
